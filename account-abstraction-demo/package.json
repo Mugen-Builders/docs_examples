@@ -1,0 +1,28 @@
+{
+  "name": "cli-aa-test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@zerodev/ecdsa-validator": "^5.4.8",
+    "@zerodev/permissions": "^5.5.8",
+    "@zerodev/remote-signer": "^5.3.3",
+    "@zerodev/sdk": "^5.4.36",
+    "@zerodev/session-key": "^5.5.3",
+    "permissionless": "^0.2.47",
+    "@zerodev/weighted-validator": "^5.4.6",
+    "viem": "^2.28.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.30",
+    "dotenv": "^16.5.0",
+    "tslib": "^2.8.1",
+    "typescript": "^5.8.3"
+  }
+}
