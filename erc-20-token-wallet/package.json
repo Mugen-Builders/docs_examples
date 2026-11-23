@@ -10,7 +10,8 @@
     "@types/node": "^24.19.2",
     "rolldown": "^1.2.13",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "viem": "2.57.20"
   },
   "scripts": {
     "build": "tsc --noEmit && rolldown -c",
