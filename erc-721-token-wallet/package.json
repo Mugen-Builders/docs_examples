@@ -2,29 +2,23 @@
   "name": "my-dapp",
   "version": "0.1.0",
   "description": "TypeScript DApp",
+  "type": "module",
   "dependencies": {
-    "ethers": "^6.14.3",
-    "openapi-fetch": "^0.14.0",
-    "viem": "^2.30.1"
+    "@cartesi/rollup": "^1.0.0-alpha.3"
   },
   "devDependencies": {
-    "@cartesi/rollups": "^1.4.5",
-    "@types/node": "^22.15.20",
-    "esbuild": "^0.25.4",
-    "npm-run-all": "^4",
-    "openapi-typescript": "^7.8.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.8.3",
-    "vitest": "^3.1.4"
+    "@types/node": "^24.19.2",
+    "rolldown": "^1.2.13",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
   },
   "scripts": {
-    "build": "run-s codegen compile",
-    "codegen": "ts-node schema.ts",
-    "compile": "tsc && esbuild ./src/index.ts --bundle --outfile=dist/index.js --platform=node --target=node20",
-    "start": "ROLLUP_HTTP_SERVER_URL=\"http://127.0.0.1:5004\" ts-node src/index.ts"
+    "build": "tsc --noEmit && rolldown -c",
+    "start": "tsx src/index.ts"
   },
   "keywords": [
     "cartesi"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "packageManager": "pnpm@11.28.5+sha512.484563d30b4c2ad27cb48aa94ff2b302dbcebc8ff6bf28816c2589886e146ce7f76f354f3bc1a438e6f5e9768c302aa0a6f7add8232903cd4cf81426cbc14d9e"
 }
