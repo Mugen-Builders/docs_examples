@@ -1,22 +1,25 @@
 import { Rollup } from "@cartesi/rollup";
+import { Parser } from "expr-eval-fork";
 
 const rollup = new Rollup();
+const parser = new Parser();
 
 await rollup.run({
   advance(request) {
-    console.log(
-      `Received advance request from ${request.msgSender} with index ${request.index} and payload 0x${request.payload.toString("hex")}`,
-    );
-
-    // emit outputs with rollup.emitNotice, rollup.emitVoucher or rollup.emitReport
-    // return false to reject the input
-    return true;
+    const expression = request.payload.toString("utf8");
+    console.log(`Received advance request with expression ${expression}`);
+    try {
+      const result = parser.evaluate(expression);
+      console.log(`Result: ${result}`);
+      rollup.emitNotice(Buffer.from(String(result), "utf8"));
+      return true;
+    } catch (error) {
+      rollup.emitReport(Buffer.from(`Error processing input: ${error}`, "utf8"));
+      return false;
+    }
   },
   inspect(request) {
-    console.log(
-      `Received inspect request with payload 0x${request.payload.toString("hex")}`,
-    );
-
-    // answer inspect requests with rollup.emitReport
+    console.log(`Received inspect request with payload ${request.payload.toString("utf8")}`);
+    rollup.emitReport(request.payload);
   },
 });

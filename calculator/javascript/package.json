@@ -7,6 +7,7 @@
     "@cartesi/rollup": "^1.0.0-alpha.3"
   },
   "devDependencies": {
+    "expr-eval-fork": "3.0.3",
     "rolldown": "^1.2.13"
   },
   "scripts": {
