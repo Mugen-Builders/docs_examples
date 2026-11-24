@@ -1,0 +1,2 @@
+requests==2.32.5
+py_expression_eval==0.3.14

@@ -1,161 +1,88 @@
-import createClient from "openapi-fetch";
-import type { components, paths } from "./schema";
+import {
+  type AdvanceRequest,
+  type InspectRequest,
+  Rollup,
+} from "@cartesi/rollup";
+import {
+  type Address,
+  bytesToHex,
+  getAddress,
+  isAddressEqual,
+  stringToHex,
+} from "viem";
 import { Wallet } from "./wallet/wallet";
-import { stringToHex, getAddress, Address, hexToString, toHex } from "viem";
 
-type AdvanceRequestData = components["schemas"]["Advance"];
-type InspectRequestData = components["schemas"]["Inspect"];
-type RequestHandlerResult = components["schemas"]["Finish"]["status"];
-type RollupRequest = components["schemas"]["RollupRequest"];
-type InspectRequestHandler = (data: InspectRequestData) => Promise<void>;
-type AdvanceRequestHandler = (
-  data: AdvanceRequestData
-) => Promise<RequestHandlerResult>;
+// Replace with the Erc20Portal address from `cartesi address-book`
+const ERC20_PORTAL: Address = "0x3332DE61a8BB9aC84893b2f552Fe81C9a6dC5419";
 
-export type Notice = components["schemas"]["Notice"];
-export type Payload = components["schemas"]["Payload"];
-export type Report = components["schemas"]["Report"];
-export type Voucher = components["schemas"]["Voucher"];
-
+const rollup = new Rollup();
 const wallet = new Wallet();
 
-const ERC20Portal = `0x05355c2F9bA566c06199DEb17212c3B78C1A3C31`;
+const handleAdvance = (request: AdvanceRequest): boolean => {
+  console.log(
+    `Received advance request from ${request.msgSender} with index ${request.index}`,
+  );
 
-
-const rollupServer = process.env.ROLLUP_HTTP_SERVER_URL;
-console.log(`HTTP rollup_server url is ${rollupServer}`);
-
-const handleAdvance: AdvanceRequestHandler = async (data) => {
-  console.log("Received advance request data " + JSON.stringify(data));
-
-  const sender = data["metadata"]["msg_sender"];
-  const payload = data.payload;
-
-  if (sender.toLowerCase() === ERC20Portal.toLowerCase()) {
-    // Handle deposit
-    const deposit = wallet.processErc20Deposit(payload);
-    await createNotice({ payload: stringToHex(deposit) });
-  } else {
-    // Handle transfer or withdrawal
-    try {
-      const { operation, erc20, from, to, amount } = JSON.parse(
-        hexToString(payload)
-      );
-
-      if (operation === "transfer") {
-        const transfer = wallet.transferErc20(
-          getAddress(from as Address),
-          getAddress(to as Address),
-          getAddress(erc20 as Address),
-          BigInt(amount)
-        );
-
-        await createNotice({ payload: stringToHex(transfer) });
-      } else if (operation === "withdraw") {
-        const voucher = wallet.withdrawErc20(
-          getAddress(from as Address),
-          getAddress(erc20 as Address),
-          BigInt(amount)
-        );
-
-        await createVoucher(voucher);
-      } else {
-        console.log("Unknown operation");
-      }
-    } catch (error) {
-      console.error("Error processing payload:", error);
-    }
+  if (isAddressEqual(request.msgSender, ERC20_PORTAL)) {
+    // Deposit: the portal names the token and the depositor in the payload
+    const deposit = wallet.processErc20Deposit(bytesToHex(request.payload));
+    rollup.emitNotice(stringToHex(deposit));
+    return true;
   }
 
-  return "accept";
-};
-
-const handleInspect: InspectRequestHandler = async (data) => {
-  console.log("Received inspect request data " + JSON.stringify(data));
-
+  // Transfer or withdrawal: always on behalf of the account that sent the input
+  const owner = getAddress(request.msgSender);
   try {
-    const payloadString = hexToString(data.payload);
-
-    const [address, erc20] = payloadString.split("/");
-
-    const balance = wallet.getAccountBalance(
-      address as Address,
-      erc20 as Address
+    const { operation, erc20, to, amount } = JSON.parse(
+      request.payload.toString("utf8"),
     );
 
-    if (balance === undefined) {
-      throw new Error("ERC20 balance is undefined");
+    if (operation === "transfer") {
+      const transfer = wallet.transferErc20(
+        owner,
+        getAddress(to),
+        getAddress(erc20),
+        BigInt(amount),
+      );
+      rollup.emitNotice(stringToHex(transfer));
+    } else if (operation === "withdraw") {
+      const voucher = wallet.withdrawErc20(
+        owner,
+        getAddress(erc20),
+        BigInt(amount),
+      );
+      rollup.emitVoucher(voucher);
+    } else {
+      throw new Error(`Unknown operation: ${operation}`);
     }
-
-    const balmsg = `Balance of token ${erc20} for user address ${address} is ${balance}`;
-
-    await createReport({ payload: stringToHex(balmsg) });
+    return true;
   } catch (error) {
-    const error_message = `Error processing inspect payload:", ${error}`;
-
-    await createReport({ payload: stringToHex(error_message) });
+    console.error("Error processing payload:", error);
+    rollup.emitReport(stringToHex(`Error processing payload: ${error}`));
+    return false;
   }
 };
 
-const createNotice = async (payload: Notice) => {
-  console.log("creating notice with payload", payload);
-
-  await fetch(`${rollupServer}/notice`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-};
-
-const createVoucher = async (payload: Voucher) => {
-  await fetch(`${rollupServer}/voucher`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-};
-
-const createReport = async (payload: Report) => {
-  await fetch(`${rollupServer}/report`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-};
-
-const main = async () => {
-  const { POST } = createClient<paths>({ baseUrl: rollupServer });
-  let status: RequestHandlerResult = "accept";
-  while (true) {
-    const { data, response } = await POST("/finish", {
-      body: { status },
-      parseAs: "text",
-    });
-
-    if (response.status === 200 && data) {
-      const request = JSON.parse(data) as RollupRequest;
-      switch (request.request_type) {
-        case "advance_state":
-          status = await handleAdvance(request.data as AdvanceRequestData);
-          break;
-        case "inspect_state":
-          await handleInspect(request.data as InspectRequestData);
-          break;
-      }
-    } else if (response.status === 202) {
-      // no rollup request available
-      console.log(await response.text());
+const handleInspect = (request: InspectRequest): void => {
+  try {
+    const [address, erc20] = request.payload.toString("utf8").split("/");
+    if (address === undefined || erc20 === undefined) {
+      throw new Error("expected userAddress/erc20TokenAddress");
     }
+    const balance = wallet.getAccountBalance(
+      getAddress(address),
+      getAddress(erc20),
+    );
+    rollup.emitReport(
+      stringToHex(
+        `Balance of token ${erc20} for user address ${address} is ${balance}`,
+      ),
+    );
+  } catch (error) {
+    rollup.emitReport(
+      stringToHex(`Error processing inspect payload: ${error}`),
+    );
   }
 };
 
-main().catch((e) => {
-  console.log(e);
-  process.exit(1);
-});
+await rollup.run({ advance: handleAdvance, inspect: handleInspect });

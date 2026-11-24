@@ -1,7 +1,10 @@
-import { Address } from "viem";
+import type { Address } from "viem";
 
 export class Balance {
-  constructor(private readonly address: Address, private ether: bigint = 0n) {}
+  constructor(
+    private readonly address: Address,
+    private ether: bigint = 0n,
+  ) {}
 
   getEther(): bigint {
     return this.ether;
@@ -15,8 +18,11 @@ export class Balance {
   }
 
   decreaseEther(amount: bigint): void {
-    if (amount < 0n || this.ether < amount) {
+    if (amount < 0n) {
       throw new Error(`Invalid amount: ${amount}`);
+    }
+    if (this.ether < amount) {
+      throw new Error(`Insufficient balance for ${this.address}`);
     }
     this.ether -= amount;
   }

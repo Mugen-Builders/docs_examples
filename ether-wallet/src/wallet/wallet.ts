@@ -1,38 +1,30 @@
-import {
-  Address,
-  getAddress,
-  hexToBytes,
-  stringToHex,
-  encodeFunctionData,
-  numberToHex,
-  parseEther
-} from "viem";
-import { ethers } from "ethers";
+import type { Voucher } from "@cartesi/rollup";
+import { type Address, getAddress, type Hex, sliceHex } from "viem";
 import { Balance } from "./balance";
-import { CartesiDAppAbi } from "./abi/CartesiDAppAbi";
-import { Voucher } from "..";
 
 export class Wallet {
-  private accounts: Map<string, Balance> = new Map();
+  private accounts: Map<Address, Balance> = new Map();
 
   private getOrCreateBalance(address: Address): Balance {
-    const key = address.toLowerCase();
-    if (!this.accounts.has(key)) {
-      this.accounts.set(key, new Balance(address));
+    const key = getAddress(address);
+    let balance = this.accounts.get(key);
+    if (!balance) {
+      balance = new Balance(key);
+      this.accounts.set(key, balance);
     }
-    return this.accounts.get(key)!;
+    return balance;
   }
 
   getBalance(address: Address): bigint {
     return this.getOrCreateBalance(address).getEther();
   }
 
-  depositEther(payload: string): string {
+  depositEther(payload: Hex): string {
     const [address, amount] = this.parseDepositPayload(payload);
     const balance = this.getOrCreateBalance(address);
     balance.increaseEther(amount);
     console.log(
-      `After deposit, balance for ${address} is ${balance.getEther()}`
+      `After deposit, balance for ${address} is ${balance.getEther()}`,
     );
     return JSON.stringify({
       type: "etherDeposit",
@@ -41,69 +33,43 @@ export class Wallet {
     });
   }
 
-  withdrawEther(
-    application: Address,
-    address: Address,
-    amount: bigint
-  ): Voucher {
+  withdrawEther(address: Address, amount: bigint): Voucher {
     const balance = this.getOrCreateBalance(address);
-
-    if (balance.getEther() >= amount) {
-      balance.decreaseEther(amount);
-      const voucher = this.encodeWithdrawCall(application, address, amount);
-
-      console.log("Voucher created succesfully", voucher);
-
-      return voucher;
-    } else {
-      throw Error("Insufficient balance");
-    }
+    balance.decreaseEther(amount);
+    console.log(
+      `After withdrawal, balance for ${address} is ${balance.getEther()}`,
+    );
+    return this.encodeWithdrawCall(address, amount);
   }
 
   transferEther(from: Address, to: Address, amount: bigint): string {
     const fromBalance = this.getOrCreateBalance(from);
     const toBalance = this.getOrCreateBalance(to);
-
-    if (fromBalance.getEther() >= amount) {
-      fromBalance.decreaseEther(amount);
-      toBalance.increaseEther(amount);
-      console.log(
-        `After transfer, balance for ${from} is ${fromBalance.getEther()}`
-      );
-      console.log(
-        `After transfer, balance for ${to} is ${toBalance.getEther()}`
-      );
-      return JSON.stringify({
-        type: "etherTransfer",
-        from,
-        to,
-        amount: amount.toString(),
-      });
-    } else {
-      throw Error("Insufficient amount");
-    }
+    fromBalance.decreaseEther(amount);
+    toBalance.increaseEther(amount);
+    console.log(
+      `After transfer, balance for ${from} is ${fromBalance.getEther()}`,
+    );
+    console.log(`After transfer, balance for ${to} is ${toBalance.getEther()}`);
+    return JSON.stringify({
+      type: "etherTransfer",
+      from,
+      to,
+      amount: amount.toString(),
+    });
   }
 
-  private parseDepositPayload(payload: string): [Address, bigint] {
-    const addressData = ethers.dataSlice(payload, 0, 20);
-    const amountData = ethers.dataSlice(payload, 20, 52);
-    if (!addressData) {
-      throw new Error("Invalid deposit payload");
-    }
+  private parseDepositPayload(payload: Hex): [Address, bigint] {
+    const addressData = sliceHex(payload, 0, 20);
+    const amountData = sliceHex(payload, 20, 52);
     return [getAddress(addressData), BigInt(amountData)];
   }
 
-  private encodeWithdrawCall(
-    application: Address,
-    receiver: Address,
-    amount: bigint
-  ): Voucher {
-    const call = "0x"
-
+  private encodeWithdrawCall(receiver: Address, amount: bigint): Voucher {
     return {
       destination: receiver,
-      payload: call,
-        value: `${amount.toString(16).padStart(64, '0')}` as `0x${string}`,
+      value: amount,
+      payload: "0x",
     };
   }
 }

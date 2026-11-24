@@ -1,72 +1,57 @@
-import { Address, getAddress, encodeFunctionData } from "viem";
-import { ethers } from "ethers";
+import type { Voucher } from "@cartesi/rollup";
+import {
+  type Address,
+  encodeFunctionData,
+  erc20Abi,
+  getAddress,
+  type Hex,
+  sliceHex,
+} from "viem";
 import { Balance } from "./balance";
-import { erc20Abi } from "viem";
-import { Voucher } from "..";
 
 export class Wallet {
-  static accounts: Map<Address, Balance>;
-
-  constructor() {
-    Wallet.accounts = new Map<Address, Balance>();
-  }
+  private accounts: Map<Address, Balance> = new Map();
 
   private getBalance = (account: Address): Balance => {
-    let balance = Wallet.accounts.get(account);
+    const key = getAddress(account);
+    let balance = this.accounts.get(key);
     if (!balance) {
-      balance = new Balance(account, new Map());
-      Wallet.accounts.set(account, balance);
+      balance = new Balance(key, new Map());
+      this.accounts.set(key, balance);
     }
     return balance;
   };
 
-  getAccountBalance = (
-    account: Address,
-    erc20: Address
-  ): bigint | undefined => {
+  getAccountBalance = (account: Address, erc20: Address): bigint => {
     const balance = this.getBalance(account);
-    const erc20Balance = balance.getErc20Balance(erc20);
+    const erc20Balance = balance.getErc20Balance(getAddress(erc20)) ?? 0n;
     console.info(
-      `Balance for ${account} and token ${erc20} retrieved as ${erc20Balance}`
+      `Balance for ${account} and token ${erc20} retrieved as ${erc20Balance}`,
     );
     return erc20Balance;
   };
 
-  processErc20Deposit = (payload: string): string => {
-    try {
-      let [erc20, account, amount] = this.parseErc20Deposit(payload);
-      console.log(`${amount} ${erc20} tokens deposited to account ${account}`);
-      return this.depositErc20(account, erc20, amount);
-    } catch (e) {
-      return `Error depositing ERC20 tokens: ${e}`;
-    }
+  processErc20Deposit = (payload: Hex): string => {
+    const [erc20, account, amount] = this.parseErc20Deposit(payload);
+    console.log(`${amount} ${erc20} tokens deposited to account ${account}`);
+    return this.depositErc20(account, erc20, amount);
   };
 
-  private parseErc20Deposit = (payload: string): [Address, Address, bigint] => {
-    try {
-      let inputData = [];
-      inputData[0] = ethers.dataSlice(payload, 0, 20);
-      inputData[1] = ethers.dataSlice(payload, 20, 40);
-      inputData[2] = ethers.dataSlice(payload, 40, 72);
-
-      return [
-        getAddress(inputData[0]),
-        getAddress(inputData[1]),
-        BigInt(inputData[2]),
-      ];
-    } catch (e) {
-      throw new Error(`Error parsing ERC20 deposit: ${e}`);
-    }
+  private parseErc20Deposit = (payload: Hex): [Address, Address, bigint] => {
+    const erc20 = getAddress(sliceHex(payload, 0, 20));
+    const account = getAddress(sliceHex(payload, 20, 40));
+    const amount = BigInt(sliceHex(payload, 40, 72));
+    return [erc20, account, amount];
   };
 
   private depositErc20 = (
     account: Address,
     erc20: Address,
-    amount: bigint
+    amount: bigint,
   ): string => {
-    let balance = this.getBalance(account);
+    const balance = this.getBalance(account);
     balance.increaseErc20Balance(erc20, amount);
-    let noticePayload = {
+    const noticePayload = {
       type: "erc20deposit",
       content: {
         address: account,
@@ -80,59 +65,48 @@ export class Wallet {
   withdrawErc20 = (
     account: Address,
     erc20: Address,
-    amount: bigint
+    amount: bigint,
   ): Voucher => {
-    try {
-      let balance = this.getBalance(account);
-      balance.decreaseErc20Balance(erc20, amount);
-      const call = encodeFunctionData({
-        abi: erc20Abi,
-        functionName: "transfer",
-        args: [account, amount],
-      });
+    const balance = this.getBalance(account);
+    balance.decreaseErc20Balance(erc20, amount);
+    const call = encodeFunctionData({
+      abi: erc20Abi,
+      functionName: "transfer",
+      args: [account, amount],
+    });
 
-      console.log(`Voucher creation success`, {
-        destination: erc20,
-        payload: call,
-      });
+    console.log("Voucher creation success", {
+      destination: erc20,
+      payload: call,
+    });
 
-      return {
-        destination: erc20,
-        payload: call,
-        value: "0x0",
-      };
-    } catch (e) {
-      throw Error(`Error withdrawing ERC20 tokens: ${e}`);
-    }
+    return {
+      destination: erc20,
+      value: 0n,
+      payload: call,
+    };
   };
 
   transferErc20 = (
     from: Address,
     to: Address,
     erc20: Address,
-    amount: bigint
+    amount: bigint,
   ): string => {
-    try {
-      let balanceFrom = this.getBalance(from);
-      let balanceTo = this.getBalance(to);
-      balanceFrom.decreaseErc20Balance(erc20, amount);
-      balanceTo.increaseErc20Balance(erc20, amount);
-      let noticePayload = {
-        type: "erc20transfer",
-        content: {
-          from: from,
-          to: to,
-          erc20: erc20,
-          amount: amount.toString(),
-        },
-      };
-      console.info(
-        `${amount} ${erc20} tokens transferred from ${from} to ${to}`
-      );
-      return JSON.stringify(noticePayload);
-    } catch (e) {
-      throw Error(`Error transferring ERC20 tokens: ${e}`);
-    }
+    const balanceFrom = this.getBalance(from);
+    const balanceTo = this.getBalance(to);
+    balanceFrom.decreaseErc20Balance(erc20, amount);
+    balanceTo.increaseErc20Balance(erc20, amount);
+    const noticePayload = {
+      type: "erc20transfer",
+      content: {
+        from: from,
+        to: to,
+        erc20: erc20,
+        amount: amount.toString(),
+      },
+    };
+    console.info(`${amount} ${erc20} tokens transferred from ${from} to ${to}`);
+    return JSON.stringify(noticePayload);
   };
 }
-
